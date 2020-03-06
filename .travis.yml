@@ -30,6 +30,7 @@ jobs:
         - yarn test-browser --headless-firefox
         - yarn test-browser --headless-chrome
         - ./scripts/test-npm-packages.sh
+        - yarn run api-extractor
 
     - name: "Build & Deploy"
       script:

@@ -10,6 +10,7 @@
     ],
     "devDependencies": {
         "@ismarslomic/mermaid.cli": "^0.5.3",
+        "@microsoft/api-extractor": "^7.7.8",
         "@strictsoftware/typedoc-plugin-monorepo": "^0.2.1",
         "@types/chai": "^4.2.2",
         "@types/express": "^4.17.2",
@@ -60,6 +61,7 @@
         "save-reference-rendering-tests": "npx ts-node @here/harp-test-utils/lib/rendering/RenderingTestResultCli.ts save-reference",
         "approve-reference-rendering-tests": "npx ts-node @here/harp-test-utils/lib/rendering/RenderingTestResultCli.ts approve",
         "typedoc": "ts-node ./scripts/setup-docs.ts && typedoc --disableOutputCheck --options typedoc.json",
+        "api-extractor": "yarn workspace @here/harp-geoutils api-extractor run && yarn workspace @here/harp-datasource-protocol api-extractor run",
         "tslint": "tslint --project tsconfig.json",
         "tslint:fix": "tslint --fix --project tsconfig.json",
         "prettier": "prettier -l \"**/*.ts\" \"**/*.tsx\" \"**/*.json\"",
