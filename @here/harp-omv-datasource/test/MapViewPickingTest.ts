@@ -28,11 +28,10 @@ import {
     TileLoaderState
 } from "@here/harp-mapview";
 import { GeoJsonTiler } from "@here/harp-mapview-decoder/lib/GeoJsonTiler";
-import { waitForEvent, willEventually } from "@here/harp-test-utils/";
-import { loadTestResource } from "@here/harp-test-utils/lib/TestDataUtils";
+import { getTestResourceUrl, waitForEvent, willEventually } from "@here/harp-test-utils/";
 import * as TestUtils from "@here/harp-test-utils/lib/WebGLStub";
 import { FontCatalog, TextCanvas } from "@here/harp-text-canvas";
-import { GlyphTextureCache } from "@here/harp-text-canvas/lib/rendering/GlyphTextureCache";
+import { getAppBaseUrl } from "@here/harp-utils";
 import { assert } from "chai";
 import * as sinon from "sinon";
 import * as THREE from "three";
@@ -46,14 +45,10 @@ declare const global: any;
 // sets the given point in the middle of the screen
 async function displayLocation(mapView: MapView, location: GeoCoordinates) {
     mapView.lookAt({ target: location, zoomLevel: 2 });
-    await waitForEvent(mapView, MapViewEventNames.CameraPositionChanged);
-
-    await willEventually(() => {
-        assert.isTrue(mapView.visibleTileSet.allVisibleTilesLoaded);
-    });
+    await waitForEvent(mapView, MapViewEventNames.FrameComplete);
 }
 
-describe.skip("MapView Picking", async function() {
+describe("MapView Picking", async function() {
     const inNodeContext = typeof window === "undefined";
     const tileKey = new TileKey(0, 0, 0);
 
@@ -81,32 +76,32 @@ describe.skip("MapView Picking", async function() {
         return decodeTile;
     }
 
+    before(async function() {});
+
     beforeEach(async function() {
+        if (inNodeContext) {
+            const g = global as any;
+            g.window = {
+                window: { devicePixelRatio: 1.0 }, // ???
+                location: {
+                    href: getAppBaseUrl()
+                }
+            };
+            g.navigator = {};
+            g.requestAnimationFrame = (cb: (delta: number) => void) => {
+                return setTimeout(() => cb(15), 15);
+            };
+            g.cancelAnimationFrame = (id: any) => {
+                return clearTimeout(id);
+            };
+            g.performance = { now: Date.now };
+        }
+
         sandbox = sinon.createSandbox();
         clearColorStub = sandbox.stub();
         sandbox
             .stub(THREE, "WebGLRenderer")
             .returns(TestUtils.getWebGLRendererStub(sandbox, clearColorStub));
-
-        sandbox.stub(GlyphTextureCache.prototype as any, "update").callsFake(() => {});
-        sandbox.stub(TextCanvas.prototype as any, "render").callsFake(() => {});
-        sandbox.stub(TextElementsRenderer.prototype as any, "renderText").callsFake(() => {});
-
-        // load font data
-        sandbox.stub(FontCatalog as any, "loadJSON").callsFake((url: URL) => {
-            let urlStr = url.toString();
-
-            if (urlStr.includes("fonts/Default_FontCatalog.json")) {
-                return loadTestResource(
-                    "@here/harp-fontcatalog",
-                    "resources/Default_FontCatalog.json",
-                    "json"
-                );
-            }
-            const fontsDir = "/fonts";
-            urlStr = urlStr.slice(urlStr.indexOf(fontsDir) + fontsDir.length);
-            return loadTestResource("@here/harp-fontcatalog", "resources/" + urlStr, "json");
-        });
 
         // fake texture loading
         sandbox.stub(FontCatalog as any, "loadTexture").callsFake((url: URL) => {
@@ -117,24 +112,6 @@ describe.skip("MapView Picking", async function() {
                 }
             };
         });
-
-        if (inNodeContext) {
-            const theGlobal: any = global;
-            theGlobal.window = {
-                window: { devicePixelRatio: 1.0 },
-                location: {
-                    href: "http://mocha-test"
-                }
-            };
-            theGlobal.navigator = {};
-            theGlobal.requestAnimationFrame = (cb: (delta: number) => void) => {
-                return setTimeout(() => cb(15), 15);
-            };
-            theGlobal.cancelAnimationFrame = (id: any) => {
-                return clearTimeout(id);
-            };
-            theGlobal.performance = { now: Date.now };
-        }
 
         addEventListenerSpy = sinon.stub();
         removeEventListenerSpy = sinon.stub();
@@ -150,10 +127,18 @@ describe.skip("MapView Picking", async function() {
             canvas,
             decoderCount: 0,
             theme: THEME,
-            enableRoadPicking: true
+            enableRoadPicking: true,
+            disableFading: true,
+            fontCatalog: getTestResourceUrl(
+                "@here/harp-fontcatalog",
+                "resources/Default_FontCatalog.json"
+            )
         });
 
         await waitForEvent(mapView, MapViewEventNames.ThemeLoaded);
+        sinon
+            .stub(mapView.textElementsRenderer, "renderText")
+            .callsFake((_camera: THREE.OrthographicCamera) => {});
 
         const geoJsonDataProvider = new GeoJsonDataProvider("italy_test", GEOJSON_DATA, {
             tiler: new GeoJsonTiler()
@@ -181,6 +166,8 @@ describe.skip("MapView Picking", async function() {
             delete global.navigator;
         }
     });
+
+    after(function() {});
 
     it("Decoded tile is created", async () => {
         const decodeTile = await getDecodedTile();
@@ -212,34 +199,6 @@ describe.skip("MapView Picking", async function() {
         assert.isDefined(lineGeometry);
         assert.isDefined(lineGeometry!.groups);
         assert.equal(lineGeometry!.groups.length, 1);
-    });
-
-    it("TilInfo contains line pick data", async () => {
-        const decodeTile = await getDecodedTile();
-        const tileInfo = decodeTile.tileInfo as ExtendedTileInfo;
-        assert.isDefined(tileInfo);
-
-        const lineGeometry = decodeTile.geometries!.find(
-            geometry => geometry.type === GeometryType.SolidLine
-        );
-
-        assert.isDefined(lineGeometry);
-        assert.isDefined(lineGeometry!.groups);
-
-        assert.isDefined(tileInfo.lineGroup);
-
-        assert.isDefined(tileInfo.lineGroup.positionIndex);
-        assert.equal(tileInfo.lineGroup.positionIndex.length, 1);
-
-        assert.isDefined(tileInfo.lineGroup.userData);
-        assert.equal(tileInfo.lineGroup.userData.length, 1);
-
-        const index = tileInfo.lineGroup.positionIndex[0] as number;
-        assert.equal(lineGeometry!.groups[0].start, index);
-
-        const userData = tileInfo.lineGroup.userData[index] as any;
-        assert.isDefined(userData);
-        assert.include(userData, GEOJSON_DATA.features[1].properties);
     });
 
     it("decodedTile contains polygon objInfos", async () => {
@@ -302,7 +261,7 @@ describe.skip("MapView Picking", async function() {
 
     // emulate a real pick in browser
     // INFO: Disabled until text renderer refactor (Travis ci build fails).
-    it.skip("Pick point", async () => {
+    it("Pick point", async () => {
         const POINT_DATA = GEOJSON_DATA.features[2];
         const coordinates = ((POINT_DATA.geometry as any).coordinates as any) as number[];
         const pointLocation = new GeoCoordinates(coordinates[1], coordinates[0]);
