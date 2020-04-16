@@ -703,7 +703,7 @@ export class TileGeometryCreator {
                     assert(!isHighPrecisionLineMaterial(material));
                     const lineMaterial = material as SolidLineMaterial;
                     if (
-                        technique.clipping !== false &&
+                        technique.clipping === true &&
                         tile.projection.type === ProjectionType.Planar
                     ) {
                         tile.boundingBox.getSize(tmpVector3);
